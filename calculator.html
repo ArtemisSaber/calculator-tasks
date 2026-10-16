@@ -1,0 +1,440 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Calculator</title>
+  <script>
+    const decimalStringTrim = (str) => {
+      let trimmed = str.trim()
+      while (trimmed.endsWith("0")) {
+        trimmed = trimmed.slice(0, -1)
+      }
+      return trimmed;
+    };
+    const isValidNumber = (str) => {
+      let trimmed = str.trim();
+      let hasDot = false;
+      let isValid = true;
+      const hasSign = trimmed.startsWith("+") || trimmed.startsWith("-");
+      if (hasSign) {
+        trimmed = trimmed.slice(1);
+      }
+      if (!trimmed?.length) {
+        return false;
+      }
+      if (trimmed.startsWith(".") || trimmed.endsWith(".")) {
+        return false;
+      }
+      for (const char of trimmed) {
+        if (char >= "0" && char <= "9") {
+          continue;
+        }
+        if (char === ".") {
+          if (hasDot) {
+            isValid = false;
+            break;
+          }
+          hasDot = true;
+          continue;
+        }
+        isValid = false;
+        break;
+      }
+      return isValid;
+    };
+    const toFixed = (inputs) => {
+      if (!inputs?.length) {
+        return {
+          scaleFactor: 0n,
+          parsed: [0n],
+          err: "INV",
+        };
+      }
+      else {
+        const parsedInputs = [];
+        let scaleFactor = 1n;
+        let err = "";
+        for (const parsee of inputs) {
+          if (!isValidNumber(parsee)) {
+            scaleFactor = 0n;
+            err = "NAN";
+            break;
+          }
+          const isDecimal = parsee.includes(".");
+          if (!isDecimal) {
+            continue;
+          }
+          else {
+            const trimmedParsee = decimalStringTrim(parsee.trim());
+            const decimalLength = trimmedParsee.split(".")[1]?.length;
+            const newScaleFactor = 10n ** BigInt(decimalLength);
+            if (newScaleFactor > scaleFactor) {
+              scaleFactor = newScaleFactor;
+            }
+          }
+        }
+        if (!err) {
+          for (const parsee of inputs) {
+            const isDecimal = parsee.includes(".");
+            if (!isDecimal) {
+              parsedInputs.push(BigInt(parsee) * scaleFactor);
+            }
+            else {
+              const trimmedParsee = decimalStringTrim(parsee.trim());
+              const splitNumbers = trimmedParsee.split(".");
+              const integers = splitNumbers[0];
+              const decimals = splitNumbers[1];
+              const normalizedParsee = integers + decimals;
+              const decimalLength = decimals.length;
+              const normalizeScaleFactor = 10n ** BigInt(decimalLength);
+              const remainingScaleFactor = scaleFactor / normalizeScaleFactor;
+              const parsedParsee = BigInt(normalizedParsee) * remainingScaleFactor;
+              parsedInputs.push(parsedParsee);
+            }
+          }
+        }
+        return {
+          scaleFactor,
+          parsed: parsedInputs,
+          err,
+        };
+      }
+    };
+    const multiply = (a, b, scaleFactor) => {
+      const result = {
+        res: {
+          integer: a * b,
+          divisor: 1n,
+          dividend: 0n,
+        },
+        scaleFactor: scaleFactor * scaleFactor,
+        err: "",
+      };
+      return result;
+    };
+    const gcd = (a, b) => {
+      a = a < 0n ? -a : a;
+      b = b < 0n ? -b : b;
+      while (b !== 0n) {
+        [a, b] = [b, a % b];
+      }
+      return a;
+    };
+    const division = (dividend, divisor) => {
+      if (divisor == 0n) {
+        return {
+          res: {
+            integer: 0n,
+            divisor: 1n,
+            dividend: 0n,
+          },
+          scaleFactor: 1n,
+          err: "DI0",
+        };
+      }
+      const remainder = dividend % divisor;
+      const gcdRemainder = gcd(divisor, remainder);
+      const remainderDivisor = divisor / gcdRemainder;
+      const remainderDividend = remainder / gcdRemainder;
+      const integer = dividend / divisor;
+      const result = {
+        res: {
+          integer,
+          divisor: remainderDivisor,
+          dividend: remainderDividend,
+        },
+        scaleFactor: 1n,
+        err: "",
+      };
+      return result;
+    };
+    const plus = (a, b, scaleFactor) => {
+      const result = {
+        res: {
+          integer: a + b,
+          divisor: 1n,
+          dividend: 0n,
+        },
+        err: "",
+        scaleFactor,
+      };
+      return result;
+    };
+
+    const initializeCalculator = (calculator) => {
+      const form = calculator.querySelector(".calculator-inputs");
+      const inputA = form.querySelector(".input-a");
+      const inputB = form.querySelector(".input-b");
+      const operand = form.querySelector(".operand");
+      const stepButtons = form.querySelectorAll(".step-button");
+      const integers = calculator.querySelector(".integers");
+      const fraction = calculator.querySelector(".fraction");
+      const dividend = fraction.querySelector(".dividend");
+      const divisor = fraction.querySelector(".divisor");
+
+      const showError = (message) => {
+        integers.textContent = message;
+        integers.hidden = !message;
+        dividend.textContent = "";
+        divisor.textContent = "";
+        fraction.hidden = true;
+      };
+
+      stepButtons.forEach((button) => {
+        button.addEventListener("click", () => {
+          const input = button.dataset.input === "a" ? inputA : inputB;
+          const { parsed, scaleFactor, err } = toFixed([input.value || "0"]);
+          if (err) {
+            showError("Enter a valid number before using the − or + buttons.");
+            return;
+          }
+          const value = parsed[0] + BigInt(button.dataset.step) * scaleFactor;
+          const magnitude = value < 0n ? -value : value;
+          const decimal = (magnitude % scaleFactor).toString()
+            .padStart(scaleFactor.toString().length - 1, "0").replace(/0+$/, "");
+          input.value = `${value < 0n ? "-" : ""}${magnitude / scaleFactor}${decimal ? `.${decimal}` : ""}`;
+        });
+      });
+
+      const calculate = () => {
+        const { parsed, scaleFactor, err } = toFixed([inputA.value, inputB.value]);
+        if (err) {
+          showError(`Enter two valid numbers.`);
+          return;
+        }
+
+        const [a, b] = parsed;
+        const operation = operand ? operand.value : form.querySelector('input[name="operation"]:checked')?.value;
+        let result;
+        switch (operation) {
+          case "+": result = plus(a, b, scaleFactor); break;
+          case "-": result = plus(a, -b, scaleFactor); break;
+          case "x": result = multiply(a, b, scaleFactor); break;
+          case "/": result = division(a, b); break;
+          default: showError("Choose a valid operation."); return;
+        }
+        if (result.err) {
+          showError("Cannot divide by zero.");
+          return;
+        }
+
+        // Convert the scaled result to a reduced mixed fraction without losing precision.
+        let numerator = result.res.integer * result.res.divisor + result.res.dividend;
+        let denominator = result.res.divisor * result.scaleFactor;
+        if (denominator < 0n) {
+          numerator = -numerator;
+          denominator = -denominator;
+        }
+        const integer = numerator / denominator;
+        const remainder = numerator % denominator;
+        const commonFactor = gcd(remainder, denominator);
+        integers.textContent = integer.toString();
+        integers.hidden = integer === 0n && remainder !== 0n;
+        fraction.hidden = remainder === 0n;
+        const fractionDividend = integer === 0n ? remainder : (remainder < 0n ? -remainder : remainder);
+        dividend.textContent = remainder === 0n ? "" : (fractionDividend / commonFactor).toString();
+        divisor.textContent = remainder === 0n ? "" : (denominator / commonFactor).toString();
+      };
+
+      form.addEventListener("submit", (event) => {
+        event.preventDefault();
+        calculate();
+      });
+    };
+
+    document.addEventListener("DOMContentLoaded", () => {
+      document.querySelectorAll(".calculator-body").forEach(initializeCalculator);
+    });
+  </script>
+  <style>
+    .calculator-wrapper [hidden] {
+      display: none !important;
+    }
+
+    .calculator-wrapper {
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+
+    .calculator-wrapper .calculator-header {
+      width: 100%;
+      text-align: center;
+    }
+
+    .calculator-body {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      padding-bottom: 20px;
+      border-bottom: 1px solid #ddd;
+    }
+
+    .calculator-body h3,
+    .calculator-body p {
+      margin: 0;
+    }
+
+    .calculator-inputs {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+
+    .number-control {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      max-width: 100%;
+    }
+
+    .number-control input {
+      width: 12rem;
+      min-width: 0;
+    }
+
+    input,
+    select,
+    button {
+      font: inherit;
+    }
+
+    button {
+      cursor: pointer;
+    }
+
+    .radio-operators {
+      margin: 0;
+      padding: 8px;
+    }
+
+    .radio-operators label {
+      display: inline-block;
+      margin-right: 8px;
+    }
+
+    .calculator-result {
+      display: flex;
+      align-items: center;
+    }
+
+    .calculator-result .fraction:not([hidden]) {
+      display: flex;
+      flex-direction: column;
+    }
+
+    .fraction .dividend {
+      padding: 2px;
+      border-bottom: 1px solid #000;
+    }
+
+    .fraction .divisor {
+      padding: 2px;
+    }
+
+    .calculator-result .integers {
+      margin-right: 2px;
+      overflow-wrap: anywhere;
+    }
+  </style>
+</head>
+
+<body>
+  <div class="calculator-wrapper">
+    <div class="calculator-header">
+      <h2>Calculator</h2>
+    </div>
+    <p>Click = or press Enter in a number field to calculate.</p>
+    <section class="calculator-body" aria-labelledby="dropdown-title">
+      <h3 id="dropdown-title">1. Dropdown operations</h3>
+      <form class="calculator-inputs" novalidate>
+        <div class="number-control">
+          <input class="input-a" type="text" inputmode="decimal" aria-label="First number" />
+        </div>
+        <select class="operand" aria-label="Operation">
+          <option>+</option>
+          <option>-</option>
+          <option>x</option>
+          <option>/</option>
+        </select>
+        <div class="number-control">
+          <input class="input-b" type="text" inputmode="decimal" aria-label="Second number" />
+        </div>
+        <button class="calculator-button" type="submit">=</button>
+      </form>
+      <div class="calculator-result" role="status" aria-live="polite" aria-atomic="true">
+        <div class="integers" hidden></div>
+        <div class="fraction" hidden>
+          <div class="dividend"></div>
+          <div class="divisor"></div>
+        </div>
+      </div>
+    </section>
+    <section class="calculator-body" aria-labelledby="radio-title">
+      <h3 id="radio-title">2. Radio button operations</h3>
+      <form class="calculator-inputs" novalidate>
+        <div class="number-control">
+          <input class="input-a" type="text" inputmode="decimal" aria-label="First number" />
+        </div>
+        <fieldset class="radio-operators">
+          <legend>Operation</legend>
+          <label><input type="radio" name="operation" value="+" checked /> Addition</label>
+          <label><input type="radio" name="operation" value="-" /> Subtraction</label>
+          <label><input type="radio" name="operation" value="x" /> Multiplication</label>
+          <label><input type="radio" name="operation" value="/" /> Division</label>
+        </fieldset>
+        <div class="number-control">
+          <input class="input-b" type="text" inputmode="decimal" aria-label="Second number" />
+        </div>
+        <button class="calculator-button" type="submit">=</button>
+      </form>
+      <div class="calculator-result" role="status" aria-live="polite" aria-atomic="true">
+        <div class="integers" hidden></div>
+        <div class="fraction" hidden>
+          <div class="dividend"></div>
+          <div class="divisor"></div>
+        </div>
+      </div>
+    </section>
+    <section class="calculator-body" aria-labelledby="stepper-title">
+      <h3 id="stepper-title">3. Increment / decrement buttons</h3>
+      <p>Use the − and + buttons to adjust either number by 1.</p>
+      <form class="calculator-inputs" novalidate>
+        <div class="number-control">
+          <button class="step-button" type="button" data-input="a" data-step="-1"
+            aria-label="Decrease first number by 1">−</button>
+          <input class="input-a" type="text" inputmode="decimal" aria-label="First number" />
+          <button class="step-button" type="button" data-input="a" data-step="1"
+            aria-label="Increase first number by 1">+</button>
+        </div>
+        <select class="operand" aria-label="Operation">
+          <option>+</option>
+          <option>-</option>
+          <option>x</option>
+          <option>/</option>
+        </select>
+        <div class="number-control">
+          <button class="step-button" type="button" data-input="b" data-step="-1"
+            aria-label="Decrease second number by 1">−</button>
+          <input class="input-b" type="text" inputmode="decimal" aria-label="Second number" />
+          <button class="step-button" type="button" data-input="b" data-step="1"
+            aria-label="Increase second number by 1">+</button>
+        </div>
+        <button class="calculator-button" type="submit">=</button>
+      </form>
+      <div class="calculator-result" role="status" aria-live="polite" aria-atomic="true">
+        <div class="integers" hidden></div>
+        <div class="fraction" hidden>
+          <div class="dividend"></div>
+          <div class="divisor"></div>
+        </div>
+      </div>
+    </section>
+  </div>
+</body>
+
+</html>
